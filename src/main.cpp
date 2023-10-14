@@ -9,12 +9,14 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <WS2812FX.h>
+#include <mutex>
 
 #define LED_COUNT 12
 #define LED_PIN 16
 
 WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+std::mutex mutex;
 
 
 // See the following for generating UUIDs:
@@ -38,7 +40,9 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
     // We have found a device, let us now see if it contains the service we are looking for.
     if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(SERVICE_UUID)) {
       // store time
+      mutex.lock();
       time = millis();
+      mutex.unlock();
 
       Serial.print("BLE Advertised Device found: ");
       Serial.println(advertisedDevice.toString().c_str());
@@ -54,7 +58,17 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 };
 
 MyAdvertisedDeviceCallbacks* advertiseCallbacks;
+TaskHandle_t Task1;
 
+//Task1code: blinks an LED every 1000 ms
+void Task1code( void * pvParameters ){
+  Serial.print("Task1 running on core ");
+  for(;;){
+    Serial.println("Scanning");
+    BLEDevice::getScan()->start(1);
+    Serial.println("Finished Scanning");
+  } 
+}
 
 void setup() {
   Serial.begin(9600);
@@ -62,7 +76,7 @@ void setup() {
 
  ws2812fx.init();
  ws2812fx.setBrightness(100);
- ws2812fx.setSpeed(200);
+ ws2812fx.setSpeed(3);
  ws2812fx.setMode(FX_MODE_RAINBOW_CYCLE);
  ws2812fx.start();
 
@@ -86,6 +100,15 @@ void setup() {
   BLEDevice::startAdvertising();
   Serial.println("Characteristic defined! Now you can read it in your phone!");
 
+  xTaskCreatePinnedToCore(
+                    Task1code,   /* Task function. */
+                    "Task2",     /* name of task. */
+                    10000,       /* Stack size of task */
+                    NULL,        /* parameter of the task */
+                    1,           /* priority of the task */
+                    &Task1,      /* Task handle to keep track of created task */
+                    1);          /* pin task to core 1 */
+
 
 
 
@@ -104,18 +127,21 @@ void setup() {
 
 void loop() {
   if (millis() == 1) {
+
     ws2812fx.service();
   }
 
-  if (millis() - advertiseCallbacks->time < 10000) {
+  mutex.lock();
+  if (millis() - advertiseCallbacks->time < 1000) {
     ws2812fx.service();
   }
+  mutex.unlock();
 
-  if (millis() % 10000 == 0) {
-    Serial.println("Scanning");
-    BLEDevice::getScan()->start(1);
-    Serial.println("Finished Scanning");
-  }
+  // if (millis() % 10000 == 0) {
+  //   Serial.println("Scanning");
+  //   BLEDevice::getScan()->start(1);
+  //   Serial.println("Finished Scanning");
+  // }
   // put your main code here, to run repeatedly:
   // delay(10000); 
 }
