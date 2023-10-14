@@ -1,3 +1,0 @@
-[submodule "lib/ws1812"]
-	path = lib/ws1812
-	url = https://github.com/kitesurfer1404/WS2812FX.git
