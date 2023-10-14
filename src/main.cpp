@@ -8,6 +8,14 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
+#include <WS2812FX.h>
+
+#define LED_COUNT 12
+#define LED_PIN 16
+
+WS2812FX ws2812fx = WS2812FX(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -19,6 +27,9 @@ static BLEUUID SERVICE_UUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
  * Scan for BLE servers and find the first one that advertises the service we are looking for.
  */
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+  public:
+  uint64_t time = 0;
+
  /**
    * Called for each advertising BLE server.
    */
@@ -26,6 +37,8 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 
     // We have found a device, let us now see if it contains the service we are looking for.
     if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(SERVICE_UUID)) {
+      // store time
+      time = millis();
 
       Serial.print("BLE Advertised Device found: ");
       Serial.println(advertisedDevice.toString().c_str());
@@ -40,9 +53,18 @@ class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
   } // onResult
 };
 
+MyAdvertisedDeviceCallbacks* advertiseCallbacks;
+
+
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.println("Starting BLE work!");
+
+ ws2812fx.init();
+ ws2812fx.setBrightness(100);
+ ws2812fx.setSpeed(200);
+ ws2812fx.setMode(FX_MODE_RAINBOW_CYCLE);
+ ws2812fx.start();
 
   BLEDevice::init("Long name works now");
   BLEServer *pServer = BLEDevice::createServer();
@@ -64,12 +86,16 @@ void setup() {
   BLEDevice::startAdvertising();
   Serial.println("Characteristic defined! Now you can read it in your phone!");
 
+
+
+
   Serial.println("Starting Arduino BLE Client application...");
    // Retrieve a Scanner and set the callback we want to use to be informed when we
   // have detected a new device.  Specify that we want active scanning and start the
   // scan to run for 5 seconds.
   BLEScan* pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  advertiseCallbacks = new MyAdvertisedDeviceCallbacks();
+  pBLEScan->setAdvertisedDeviceCallbacks(advertiseCallbacks);
   pBLEScan->setInterval(1349);
   pBLEScan->setWindow(449);
   pBLEScan->setActiveScan(true);
@@ -77,7 +103,19 @@ void setup() {
 }
 
 void loop() {
+  if (millis() == 1) {
+    ws2812fx.service();
+  }
+
+  if (millis() - advertiseCallbacks->time < 10000) {
+    ws2812fx.service();
+  }
+
+  if (millis() % 10000 == 0) {
+    Serial.println("Scanning");
+    BLEDevice::getScan()->start(1);
+    Serial.println("Finished Scanning");
+  }
   // put your main code here, to run repeatedly:
-  delay(10000);
-  BLEDevice::getScan()->start(0);
+  // delay(10000); 
 }
