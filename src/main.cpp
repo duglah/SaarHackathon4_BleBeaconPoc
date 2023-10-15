@@ -35,7 +35,7 @@ std::function<void(std::vector<BLEAdvertisedDevice>)> handleBleDevices = [&](std
 
   for (auto& device: v) {
     if (device.haveServiceUUID() && device.isAdvertisingService(BLE::SERVICE_UUID)) {
-      Serial.printf("BLE Advertised Device found: %s", device.getName());
+      Serial.printf("BLE Advertised Device found: ");
       Serial.printf("Rssi: %d\n", device.getRSSI());
       int rssi = device.getRSSI();
       maxDeviceRssi = max(rssi, maxDeviceRssi);
@@ -44,8 +44,6 @@ std::function<void(std::vector<BLEAdvertisedDevice>)> handleBleDevices = [&](std
 
   if (maxDeviceRssi != -1000) {
     bleTime.set(maxDeviceRssi);
-  } else {
-    Serial.println("RSS 0");
   }
 };
 
@@ -62,8 +60,5 @@ void setup() {
 
 void loop() {
   bool deviceIsClose = millis() - bleTime.getTime() < 1500;
-  if (deviceIsClose) {
-    Serial.println("IS Close");
-  }
   LED::loop(deviceIsClose, bleTime.getMaxRssi());
 }
