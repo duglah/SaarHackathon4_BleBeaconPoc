@@ -1,40 +1,49 @@
 #include <Arduino.h>
-#include <WS2812FX.h>
+#include <FastLED.h>
 #include <mutex>
 #include "bluetooth.hpp"
-#include "led.hpp"
 #include <numeric>
 
+#define LED_COUNT 12
+#define LED_PIN 16
+
 // stores last time device received ble signal and signal strength from device with service uuid
-struct BleTime {
-  private:
+struct BleTime
+{
+private:
   std::mutex mutex;
   uint64_t time;
   int rssi;
 
-  public:
-    void set(int rssi) {
-      std::lock_guard<std::mutex> lock(mutex);
-      this->time = millis();
-      this->rssi = rssi;
-    }
+public:
+  void set(int rssi)
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    this->time = millis();
+    this->rssi = rssi;
+  }
 
-    int64_t getTime() {
-      std::lock_guard<std::mutex> lock(mutex);
-      return time;
-    }
+  int64_t getTime()
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    return time;
+  }
 
-    int getMaxRssi() {
-      std::lock_guard<std::mutex> lock(mutex);
-      return rssi;
-    }
+  int getMaxRssi()
+  {
+    std::lock_guard<std::mutex> lock(mutex);
+    return rssi;
+  }
 } bleTime;
 
-std::function<void(std::vector<BLEAdvertisedDevice>)> handleBleDevices = [&](std::vector<BLEAdvertisedDevice> v) {
+std::function<void(std::vector<BLEAdvertisedDevice>)> handleBleDevices = [&](std::vector<BLEAdvertisedDevice> v)
+{
   int maxDeviceRssi = -1000;
 
-  for (auto& device: v) {
-    if (device.haveServiceUUID() && device.isAdvertisingService(BLE::SERVICE_UUID)) {
+  for (auto &device : v)
+  {
+    if (device.haveServiceUUID() && device.isAdvertisingService(BLE::SERVICE_UUID))
+    {
       Serial.printf("BLE Advertised Device found: ");
       Serial.printf("Rssi: %d\n", device.getRSSI());
       int rssi = device.getRSSI();
@@ -42,23 +51,66 @@ std::function<void(std::vector<BLEAdvertisedDevice>)> handleBleDevices = [&](std
     }
   }
 
-  if (maxDeviceRssi != -1000) {
+  if (maxDeviceRssi != -1000)
+  {
     bleTime.set(maxDeviceRssi);
   }
 };
 
+long device_id;
 
-void setup() {
+CRGB leds[LED_COUNT];
+unsigned long nextStepSize = 50;
+unsigned long nextStepOn;
+uint8_t hue;
+
+void setup()
+{
+  // Start Serial port
   Serial.begin(9600);
-  Serial.println("Starting BLE work!");
-  LED::setup();
-  BLE::setup(&handleBleDevices);
+  
+  // Generate pseudo random number for device id
+  randomSeed(analogRead(0));
+  device_id = random(255);
+  Serial.printf("Starting as St Martins Laterne #%lu\n", device_id);
 
-  Serial.println("Starting Arduino BLE Client application...");
+  // Start FastLED
+  FastLED.addLeds<NEOPIXEL, LED_PIN>(leds, LED_COUNT);
+ 
+  // Start BLE Serivce
+  BLE::setup(&handleBleDevices, device_id);
 }
 
+void loop()
+{
+  bool deviceRecentlyFound = millis() - bleTime.getTime() < 1500;
+  bool deviceIsNear = bleTime.getMaxRssi() > -75;
 
-void loop() {
-  bool deviceIsClose = millis() - bleTime.getTime() < 1500;
-  LED::loop(deviceIsClose, bleTime.getMaxRssi());
+  // Is other lantern near and was recently found?
+  if (deviceRecentlyFound && deviceIsNear)
+  {
+    // Last update was just now, so we skip
+    if(millis() < nextStepOn) {
+      return;
+    }
+
+    // Set rainbow color
+    fill_solid(&(leds[0]), LED_COUNT, CHSV(hue, 208, 255));
+    FastLED.show();
+
+    nextStepOn = millis() + nextStepSize;
+    hue++;
+    BLE::setHue(hue);
+  }
+  else
+  {
+    // Blink red!
+    fill_solid(&(leds[0]), LED_COUNT, CRGB::Red);
+    FastLED.show();
+    delay(500);
+
+    fill_solid(&(leds[0]), LED_COUNT, CRGB::Black);
+    FastLED.show();
+    delay(500);
+  }
 }
